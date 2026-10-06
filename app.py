@@ -1,371 +1,570 @@
 """
 Thailand Road Accident Analytics & Safety Dashboard
-Main Application File (Python Dash + Plotly + Bootstrap)
+Interactive Streamlit Application
 """
 
 import os
 import io
-import json
 import pandas as pd
-import dash
-from dash import html, dcc, Input, Output, State, callback_context
-import dash_bootstrap_components as dbc
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
 from utils.data_loader import (
-    load_accident_data, filter_accident_data, calculate_kpis,
-    parse_uploaded_file, run_policy_simulation
+    load_accident_data, filter_accident_data, calculate_kpis, run_policy_simulation
 )
 from utils.style_constants import (
     COLOR_BG_DARK, COLOR_CARD_BG, COLOR_CARD_BORDER,
     COLOR_TEXT_PRIMARY, COLOR_TEXT_MUTED, COLOR_CRITICAL_RED,
-    COLOR_WARNING_AMBER, COLOR_SAFE_GREEN, COLOR_CYAN_ACCENT
+    COLOR_WARNING_AMBER, COLOR_SAFE_GREEN, COLOR_CYAN_ACCENT,
+    RISK_COLOR_MAP, VEHICLE_COLOR_MAP, apply_dark_theme
 )
-from components.tab_casualties import render_tab_casualties
-from components.tab_risk_zones import render_tab_risk_zones
-from components.tab_risk_mismatch import render_tab_risk_mismatch
 
-# Initialize Dash application with Darkly Bootstrap Theme
-app = dash.Dash(
-    __name__,
-    external_stylesheets=[dbc.themes.DARKLY],
-    suppress_callback_exceptions=True,
-    title="Thailand Road Accident Analytics & Risk Dashboard"
+# -------------------------------------------------------------
+# 1. Page Configuration & Custom CSS
+# -------------------------------------------------------------
+st.set_page_config(
+    page_title="Thailand Road Accident Analytics",
+    page_icon="🚗",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
-server = app.server
 
-# Load default dataset
-raw_df = load_accident_data()
-
-# Global Options
-YEAR_OPTIONS = [{"label": "All Years (2020-2026)", "value": "All"}] + [
-    {"label": str(y), "value": y} for y in sorted(raw_df["year"].unique())
-]
-REGION_OPTIONS = [{"label": "All Regions (ทุกภูมิภาค)", "value": "All"}] + [
-    {"label": r, "value": r} for r in sorted(raw_df["region"].unique())
-]
-VEHICLE_OPTIONS = [{"label": "All Vehicle Types (ทุกยานพาหนะ)", "value": "All"}] + [
-    {"label": v, "value": v} for v in sorted(raw_df["vehicle_type"].unique())
-]
-PERIOD_OPTIONS = [{"label": "All Periods (ทุกช่วงเวลา)", "value": "All"}] + [
-    {"label": p, "value": p} for p in sorted(raw_df["period_type"].unique())
-]
-
-# Helper for KPI Cards
-def create_kpi_card(title, value_id, subtext_id, border_color="#38BDF8", icon="📊"):
-    return dbc.Card([
-        dbc.CardBody([
-            html.Div([
-                html.Span(icon, style={"fontSize": "22px", "marginRight": "8px"}),
-                html.Span(title, className="text-uppercase small fw-bold", style={"color": COLOR_TEXT_MUTED})
-            ], className="d-flex align-items-center mb-1"),
-            html.H3("...", id=value_id, className="fw-bold mb-1", style={"color": COLOR_TEXT_PRIMARY}),
-            html.Small("...", id=subtext_id, className="text-muted")
-        ], className="p-3")
-    ], style={
-        "backgroundColor": COLOR_CARD_BG,
-        "border": f"1px solid {COLOR_CARD_BORDER}",
-        "borderLeft": f"4px solid {border_color}",
-        "borderRadius": "8px"
-    }, className="shadow-sm h-100")
-
-# App Layout
-app.layout = dbc.Container([
-    # Client-side In-Memory Store
-    dcc.Store(id="stored-raw-data", data=raw_df.to_json(orient="split", date_format="iso")),
-    dcc.Download(id="download-dataframe-csv"),
-
-    # Header Navbar
-    dbc.Row([
-        dbc.Col([
-            html.Div([
-                html.H2([
-                    html.Span("🚗 ", style={"fontSize": "1.4em"}),
-                    "Thailand Road Accident Analytics & Safety Dashboard"
-                ], className="fw-bold text-white mb-1"),
-                html.P(
-                    "ระบบวิเคราะห์สถิติอุบัติเหตุทางถนน พิกัดจุดเสี่ยงอันตราย และแบบจำลองมาตรการความปลอดภัย",
-                    className="text-info mb-0"
-                )
-            ], className="py-3")
-        ], md=8),
-        dbc.Col([
-            html.Div([
-                dcc.Upload(
-                    id="upload-data",
-                    children=html.Button(
-                        "📁 Upload CSV / Excel",
-                        className="btn btn-outline-info btn-sm me-2 shadow-sm"
-                    ),
-                    multiple=False
-                ),
-                html.Button(
-                    "📥 Export Filtered CSV",
-                    id="btn-export-csv",
-                    className="btn btn-outline-success btn-sm shadow-sm"
-                )
-            ], className="py-3 d-flex justify-content-md-end align-items-center")
-        ], md=4)
-    ], className="border-bottom border-secondary mb-3 align-items-center"),
-
-    # Upload Notification Alert
-    html.Div(id="upload-status-alert"),
-
-    # Global Filters Bar
-    dbc.Card([
-        dbc.CardBody([
-            dbc.Row([
-                dbc.Col([
-                    html.Label("📅 Year Filter:", className="small text-muted fw-bold"),
-                    dcc.Dropdown(id="filter-year", options=YEAR_OPTIONS, value="All", clearable=False,
-                                 className="dash-bootstrap-dark")
-                ], xs=12, sm=6, md=3, className="mb-2"),
-                dbc.Col([
-                    html.Label("📍 Region Filter:", className="small text-muted fw-bold"),
-                    dcc.Dropdown(id="filter-region", options=REGION_OPTIONS, value="All", clearable=False,
-                                 className="dash-bootstrap-dark")
-                ], xs=12, sm=6, md=3, className="mb-2"),
-                dbc.Col([
-                    html.Label("🛵 Vehicle Filter:", className="small text-muted fw-bold"),
-                    dcc.Dropdown(id="filter-vehicle", options=VEHICLE_OPTIONS, value="All", clearable=False,
-                                 className="dash-bootstrap-dark")
-                ], xs=12, sm=6, md=3, className="mb-2"),
-                dbc.Col([
-                    html.Label("🎉 Period / Festival:", className="small text-muted fw-bold"),
-                    dcc.Dropdown(id="filter-period", options=PERIOD_OPTIONS, value="All", clearable=False,
-                                 className="dash-bootstrap-dark")
-                ], xs=12, sm=6, md=3, className="mb-2"),
-            ], className="g-2")
-        ], className="p-2")
-    ], style={"backgroundColor": COLOR_CARD_BG, "border": f"1px solid {COLOR_CARD_BORDER}", "borderRadius": "8px"}, className="mb-3"),
-
-    # Executive KPI Summary Cards
-    dbc.Row([
-        dbc.Col([
-            create_kpi_card("Total Incidents", "kpi-incidents", "kpi-incidents-sub", "#38BDF8", "💥")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("Total Fatalities", "kpi-fatalities", "kpi-fatalities-sub", COLOR_CRITICAL_RED, "⚰️")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("Total Injuries", "kpi-injuries", "kpi-injuries-sub", COLOR_WARNING_AMBER, "🩹")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("Fatality Rate", "kpi-fatality-rate", "kpi-fatality-rate-sub", "#F43F5E", "⚠️")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("High Risk Blackspots", "kpi-blackspots", "kpi-blackspots-sub", "#FB923C", "📍")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("Economic Loss", "kpi-loss", "kpi-loss-sub", COLOR_SAFE_GREEN, "💸")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-    ], className="g-2 mb-2"),
-
-    # Main Dashboard Tabs
-    dbc.Tabs([
-        dbc.Tab(
-            label="📊 Tab 1: Casualties & Vehicle Impact",
-            tab_id="tab-1",
-            active_tab_class_name="fw-bold text-info border-info",
-            label_class_name="text-light"
-        ),
-        dbc.Tab(
-            label="🗺️ Tab 2: Risk Zones & Causes",
-            tab_id="tab-2",
-            active_tab_class_name="fw-bold text-info border-info",
-            label_class_name="text-light"
-        ),
-        dbc.Tab(
-            label="🔬 Tab 3: Risk Mismatch & Simulation",
-            tab_id="tab-3",
-            active_tab_class_name="fw-bold text-info border-info",
-            label_class_name="text-light"
-        ),
-    ], id="main-tabs", active_tab="tab-1", className="mb-3 custom-tabs"),
-
-    # Dynamic Tab Content Area
-    dcc.Loading(
-        id="loading-content",
-        type="default",
-        children=html.Div(id="tab-content-area")
-    ),
-
-    # Footer
-    html.Footer([
-        html.Div([
-            html.Span("Open Government Data Attribution: Department of Highways (DOH) • ThaiRSC • RTP • DLT", className="text-muted small"),
-            html.Span(" | Built for Thailand Road Safety & Analytics Intelligence", className="text-muted small")
-        ], className="text-center py-4 border-top border-secondary mt-4")
-    ])
-
-], fluid=True, style={"backgroundColor": COLOR_BG_DARK, "minHeight": "100vh", "padding": "20px 24px"})
+# Custom Styling for Dark Slate Theme
+st.markdown("""
+<style>
+    /* Dark Slate Theme Custom Styles */
+    .stApp {
+        background-color: #0F172A;
+        color: #F8FAFC;
+    }
+    header[data-testid="stHeader"] {
+        background-color: #0F172A;
+    }
+    section[data-testid="stSidebar"] {
+        background-color: #1E293B;
+        border-right: 1px solid #334155;
+    }
+    
+    /* Metric Cards */
+    div[data-testid="stMetric"] {
+        background-color: #1E293B;
+        border: 1px solid #334155;
+        padding: 14px 18px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #94A3B8 !important;
+        font-weight: 600 !important;
+        font-size: 0.85rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    div[data-testid="stMetricValue"] {
+        color: #F8FAFC !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Tabs */
+    button[data-baseweb="tab"] {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: #94A3B8;
+        border-radius: 6px 6px 0 0;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #38BDF8 !important;
+        border-bottom-color: #38BDF8 !important;
+    }
+    
+    /* Simulation Container */
+    .simulation-box {
+        background-color: #132338;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 
-# Callback 1: Handle File Upload
-@app.callback(
-    Output("stored-raw-data", "data"),
-    Output("upload-status-alert", "children"),
-    Input("upload-data", "contents"),
-    State("upload-data", "filename"),
-    State("stored-raw-data", "data"),
-    prevent_initial_call=True
+# -------------------------------------------------------------
+# 2. Data Loading & Session State Management
+# -------------------------------------------------------------
+@st.cache_data
+def get_default_data():
+    return load_accident_data()
+
+if "custom_df" not in st.session_state:
+    st.session_state.custom_df = None
+
+# Sidebar Data Upload
+st.sidebar.markdown("### 📁 จัดการชุดข้อมูล (Data Input)")
+uploaded_file = st.sidebar.file_uploader(
+    "อัปโหลดไฟล์อุบัติเหตุใหม่ (CSV / Excel):",
+    type=["csv", "xlsx", "xls"],
+    help="อัปโหลดชุดข้อมูลเพื่อแทนที่ข้อมูลตัวอย่าง"
 )
-def handle_file_upload(contents, filename, current_data_json):
-    if not contents:
-        return current_data_json, dash.no_update
-    new_df, err = parse_uploaded_file(contents, filename)
-    if err:
-        alert = dbc.Alert(f"⚠️ {err}", color="danger", dismissable=True, className="mt-2")
-        return current_data_json, alert
-    alert = dbc.Alert(f"✅ Successfully loaded {len(new_df):,} records from '{filename}'!", color="success", dismissable=True, className="mt-2")
-    return new_df.to_json(orient="split", date_format="iso"), alert
 
+if uploaded_file is not None:
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            st.session_state.custom_df = pd.read_csv(uploaded_file)
+        else:
+            st.session_state.custom_df = pd.read_excel(uploaded_file)
+        st.sidebar.success(f"✅ โหลดสำเร็จ: {len(st.session_state.custom_df):,} แถว")
+    except Exception as e:
+        st.sidebar.error(f"❌ เกิดข้อผิดพลาด: {str(e)}")
 
-# Callback 2: Update Filtered Data & KPIs & Tab Views
-@app.callback(
-    Output("kpi-incidents", "children"),
-    Output("kpi-incidents-sub", "children"),
-    Output("kpi-fatalities", "children"),
-    Output("kpi-fatalities-sub", "children"),
-    Output("kpi-injuries", "children"),
-    Output("kpi-injuries-sub", "children"),
-    Output("kpi-fatality-rate", "children"),
-    Output("kpi-fatality-rate-sub", "children"),
-    Output("kpi-blackspots", "children"),
-    Output("kpi-blackspots-sub", "children"),
-    Output("kpi-loss", "children"),
-    Output("kpi-loss-sub", "children"),
-    Output("tab-content-area", "children"),
-    Input("filter-year", "value"),
-    Input("filter-region", "value"),
-    Input("filter-vehicle", "value"),
-    Input("filter-period", "value"),
-    Input("main-tabs", "active_tab"),
-    Input("stored-raw-data", "data")
+# Active DataFrame
+df_base = st.session_state.custom_df if st.session_state.custom_df is not None else get_default_data()
+
+# -------------------------------------------------------------
+# 3. Sidebar Filters
+# -------------------------------------------------------------
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🔍 ตัวกรองข้อมูล (Filter Panel)")
+
+# Filter: Year
+available_years = sorted(df_base["year"].unique())
+year_options = ["All Years"] + [str(y) for y in available_years]
+selected_year = st.sidebar.selectbox("📅 ปีงบประมาณ (Year):", year_options, index=0)
+
+# Filter: Region
+available_regions = sorted(df_base["region"].unique())
+region_options = ["All Regions"] + list(available_regions)
+selected_region = st.sidebar.selectbox("📍 ภูมิภาค (Region):", region_options, index=0)
+
+# Filter: Vehicle Type
+available_vehicles = sorted(df_base["vehicle_type"].unique())
+vehicle_options = ["All Vehicles"] + list(available_vehicles)
+selected_vehicle = st.sidebar.selectbox("🛵 ประเภทยานพาหนะ (Vehicle):", vehicle_options, index=0)
+
+# Filter: Period / Festival
+available_periods = sorted(df_base["period_type"].unique())
+period_options = ["All Periods"] + list(available_periods)
+selected_period = st.sidebar.selectbox("🎉 ช่วงเวลา/เทศกาล (Period):", period_options, index=0)
+
+# Filter: Road Hierarchy
+available_roads = sorted(df_base["road_hierarchy"].unique())
+road_options = ["All Road Types"] + list(available_roads)
+selected_road = st.sidebar.selectbox("🛣️ ประเภทสายทาง (Road Hierarchy):", road_options, index=0)
+
+# Apply Filters
+filtered_df = filter_accident_data(
+    df_base,
+    years=[int(selected_year)] if selected_year != "All Years" else None,
+    regions=[selected_region] if selected_region != "All Regions" else None,
+    vehicle_types=[selected_vehicle] if selected_vehicle != "All Vehicles" else None,
+    period_types=[selected_period] if selected_period != "All Periods" else None,
+    road_types=[selected_road] if selected_road != "All Road Types" else None
 )
-def update_dashboard(year, region, vehicle, period, active_tab, data_json):
-    import io
-    df = pd.read_json(io.StringIO(data_json), orient="split")
-    filtered = filter_accident_data(
-        df,
-        years=[year] if year != "All" else None,
-        regions=[region] if region != "All" else None,
-        vehicle_types=[vehicle] if vehicle != "All" else None,
-        period_types=[period] if period != "All" else None
+
+# Export Button in Sidebar
+st.sidebar.markdown("---")
+csv_data = filtered_df.to_csv(index=False).encode('utf-8-sig')
+st.sidebar.download_button(
+    label="📥 ดาวน์โหลดข้อมูลที่กรอง (CSV)",
+    data=csv_data,
+    file_name="thailand_road_accidents_filtered.csv",
+    mime="text/csv",
+    use_container_width=True
+)
+
+st.sidebar.caption("Open Government Data Attribution: DOH • ThaiRSC • RTP • DLT")
+
+# -------------------------------------------------------------
+# 4. Header & Executive KPI Summary Cards
+# -------------------------------------------------------------
+st.title("🚗 Thailand Road Accident Analytics & Safety Dashboard")
+st.markdown("ระบบวิเคราะห์สถิติอุบัติเหตุทางถนน พิกัดจุดเสี่ยงอันตราย และแบบจำลองมาตรการความปลอดภัยเชิงนโยบาย")
+
+# Calculate KPIs
+kpis = calculate_kpis(filtered_df)
+
+col1, col2, col3, col4, col5, col6 = st.columns(6)
+with col1:
+    st.metric("Total Incidents", f"{kpis['total_incidents']:,}", delta="อุบัติเหตุทั้งหมด")
+with col2:
+    st.metric("Fatalities", f"{kpis['total_fatalities']:,}", delta=f"{kpis['fatality_rate']}% อัตราเสียชีวิต", delta_color="inverse")
+with col3:
+    st.metric("Total Injuries", f"{kpis['total_serious'] + kpis['total_slight']:,}", delta=f"สาหัส {kpis['total_serious']:,} ราย", delta_color="inverse")
+with col4:
+    st.metric("Fatality Rate", f"{kpis['fatality_rate']}%", delta="รายต่อ 100 เหตุการณ์", delta_color="inverse")
+with col5:
+    st.metric("High-Risk Blackspots", f"{kpis['high_risk_incidents']:,}", delta=f"{kpis['high_risk_share']}% Critical Zones", delta_color="inverse")
+with col6:
+    st.metric("Economic Loss", f"฿{kpis['total_loss_mb']:,.1f}M", delta="มูลค่าความเสียหายรวม")
+
+st.markdown("---")
+
+# -------------------------------------------------------------
+# 5. Main Dashboard Tabs
+# -------------------------------------------------------------
+tab1, tab2, tab3 = st.tabs([
+    "📊 Tab 1: Casualties & Vehicle Impact",
+    "🗺️ Tab 2: Risk Zones & Causes",
+    "🔬 Tab 3: Risk Mismatch & Simulation Engine"
+])
+
+# -------------------------------------------------------------
+# TAB 1: Casualties & Vehicle Impact
+# -------------------------------------------------------------
+with tab1:
+    st.subheader("สถิติและปริมาณความรุนแรงของอุบัติเหตุ จำแนกตามประเภทยานพาหนะ")
+
+    r1_col1, r1_col2 = st.columns([7, 5])
+    with r1_col1:
+        # Yearly Trend Chart
+        yearly = filtered_df.groupby("year").agg({
+            "incident_id": "count",
+            "fatalities": "sum",
+            "serious_injuries": "sum",
+            "slight_injuries": "sum"
+        }).reset_index()
+        yearly["total_injuries"] = yearly["serious_injuries"] + yearly["slight_injuries"]
+
+        fig_trends = go.Figure()
+        fig_trends.add_trace(go.Scatter(
+            x=yearly["year"], y=yearly["incident_id"],
+            mode="lines+markers", name="Total Incidents (อุบัติเหตุ)",
+            line=dict(color=COLOR_CYAN_ACCENT, width=3), marker=dict(size=7)
+        ))
+        fig_trends.add_trace(go.Scatter(
+            x=yearly["year"], y=yearly["total_injuries"],
+            mode="lines+markers", name="Injuries (บาดเจ็บ)",
+            line=dict(color=COLOR_WARNING_AMBER, width=2.5, dash="dot"), marker=dict(size=6)
+        ))
+        fig_trends.add_trace(go.Scatter(
+            x=yearly["year"], y=yearly["fatalities"],
+            mode="lines+markers", name="Fatalities (เสียชีวิต)",
+            line=dict(color=COLOR_CRITICAL_RED, width=3), marker=dict(size=8, symbol="diamond")
+        ))
+        apply_dark_theme(fig_trends, "📈 แนวโน้มอุบัติเหตุและผู้บาดเจ็บ/เสียชีวิตรายปี (2020-2026)")
+        fig_trends.update_xaxes(dtick=1)
+        st.plotly_chart(fig_trends, use_container_width=True)
+
+    with r1_col2:
+        # Vehicle Type Distribution
+        veh_summary = filtered_df.groupby("vehicle_type").agg({
+            "incident_id": "count",
+            "fatalities": "sum"
+        }).reset_index().rename(columns={"incident_id": "incidents"}).sort_values(by="incidents", ascending=True)
+
+        fig_veh = go.Figure()
+        colors = [VEHICLE_COLOR_MAP.get(v, "#38BDF8") for v in veh_summary["vehicle_type"]]
+        fig_veh.add_trace(go.Bar(
+            y=veh_summary["vehicle_type"],
+            x=veh_summary["incidents"],
+            orientation="h",
+            marker_color=colors,
+            text=veh_summary["incidents"].apply(lambda x: f"{x:,}"),
+            textposition="outside"
+        ))
+        apply_dark_theme(fig_veh, "🛵 ประเภทยานพาหนะที่ประสบเหตุ (Vehicle Types Involved)")
+        fig_veh.update_xaxes(title="จำนวนครั้ง (ครั้ง)")
+        st.plotly_chart(fig_veh, use_container_width=True)
+
+    r2_col1, r2_col2 = st.columns(2)
+    with r2_col1:
+        # Casualty Outcomes by Period
+        period_group = filtered_df.groupby("period_type").agg({
+            "slight_injuries": "sum",
+            "serious_injuries": "sum",
+            "fatalities": "sum"
+        }).reset_index()
+
+        fig_outcomes = go.Figure()
+        fig_outcomes.add_trace(go.Bar(
+            x=period_group["period_type"], y=period_group["slight_injuries"],
+            name="Slight Injury (บาดเจ็บเล็กน้อย)", marker_color=COLOR_SAFE_GREEN
+        ))
+        fig_outcomes.add_trace(go.Bar(
+            x=period_group["period_type"], y=period_group["serious_injuries"],
+            name="Serious Injury (บาดเจ็บสาหัส)", marker_color=COLOR_WARNING_AMBER
+        ))
+        fig_outcomes.add_trace(go.Bar(
+            x=period_group["period_type"], y=period_group["fatalities"],
+            name="Fatality (เสียชีวิต)", marker_color=COLOR_CRITICAL_RED
+        ))
+        fig_outcomes.update_layout(barmode="stack")
+        apply_dark_theme(fig_outcomes, "⏱️ จำแนกผลลัพธ์ความรุนแรงตามช่วงเทศกาล (Casualty Timeline)")
+        st.plotly_chart(fig_outcomes, use_container_width=True)
+
+    with r2_col2:
+        # Economic Loss Boxplot
+        fig_cost = px.box(
+            filtered_df,
+            x="vehicle_type",
+            y="estimated_economic_loss_thb",
+            color="vehicle_type",
+            color_discrete_map=VEHICLE_COLOR_MAP,
+            points=False
+        )
+        apply_dark_theme(fig_cost, "💰 มูลค่าความเสียหายทางเศรษฐกิจ ต่อเคส (Financial Loss Distribution)")
+        fig_cost.update_yaxes(title="ความเสียหาย (บาท)", tickformat=",.0f")
+        fig_cost.update_xaxes(title="ประเภทยานพาหนะ")
+        st.plotly_chart(fig_cost, use_container_width=True)
+
+
+# -------------------------------------------------------------
+# TAB 2: Risk Zones & Causes
+# -------------------------------------------------------------
+with tab2:
+    st.subheader("พื้นที่จุดเสี่ยง (Blackspots) สาเหตุหลัก และหน่วยงานที่รับผิดชอบสายทาง")
+
+    # Geospatial Map
+    sample_geo = filtered_df.sample(n=min(len(filtered_df), 800), random_state=42) if len(filtered_df) > 800 else filtered_df
+    fig_map = px.scatter_geo(
+        sample_geo,
+        lat="latitude",
+        lon="longitude",
+        color="risk_level",
+        color_discrete_map=RISK_COLOR_MAP,
+        size="total_casualties",
+        size_max=14,
+        hover_name="province",
+        hover_data={
+            "latitude": False,
+            "longitude": False,
+            "accident_cause": True,
+            "fatalities": True,
+            "vehicle_type": True,
+            "road_hierarchy": True
+        },
+        scope="asia"
+    )
+    fig_map.update_geos(
+        center=dict(lat=13.736717, lon=100.523186),
+        projection_scale=6.5,
+        visible=True,
+        resolution=50,
+        showland=True, landcolor="#1E293B",
+        showocean=True, oceancolor="#0F172A",
+        showlakes=True, lakecolor="#0F172A",
+        showrivers=False,
+        showcountries=True, countrycolor="#334155",
+        countrywidth=1.2,
+        bgcolor="#0F172A"
+    )
+    apply_dark_theme(fig_map, "🗺️ แผนที่พิกัดจุดเสี่ยงอันตราย (High-Risk Blackspots Map)", height=500)
+    st.plotly_chart(fig_map, use_container_width=True)
+
+    t2_col1, t2_col2 = st.columns(2)
+    with t2_col1:
+        # Causes Horizontal Pareto
+        cause_counts = filtered_df["accident_cause"].value_counts().reset_index()
+        cause_counts.columns = ["cause", "count"]
+        cause_counts = cause_counts.sort_values(by="count", ascending=True)
+
+        fig_causes = go.Figure()
+        fig_causes.add_trace(go.Bar(
+            y=cause_counts["cause"],
+            x=cause_counts["count"],
+            orientation="h",
+            marker=dict(
+                color=cause_counts["count"],
+                colorscale=[[0, "#38BDF8"], [0.5, "#F59E0B"], [1, "#FF4136"]],
+                showscale=False
+            ),
+            text=cause_counts["count"].apply(lambda x: f"{x:,}"),
+            textposition="outside"
+        ))
+        apply_dark_theme(fig_causes, "⚠️ สาเหตุหลักของการเกิดอุบัติเหตุ (Top Accident Causes)")
+        fig_causes.update_xaxes(title="จำนวนครั้ง (ครั้ง)")
+        st.plotly_chart(fig_causes, use_container_width=True)
+
+    with t2_col2:
+        # Managing Entities Donut
+        entity_counts = filtered_df["managing_entity"].value_counts().reset_index()
+        entity_counts.columns = ["entity", "count"]
+
+        fig_entities = go.Figure(data=[go.Pie(
+            labels=entity_counts["entity"],
+            values=entity_counts["count"],
+            hole=0.48,
+            marker=dict(colors=["#38BDF8", "#10B981", "#F59E0B", "#A855F7", "#EC4899"]),
+            textinfo="percent+label",
+            insidetextorientation="radial"
+        )])
+        apply_dark_theme(fig_entities, "🏛️ หน่วยงานผู้ดูแลสายทาง (Managing Entities & Authorities)")
+        fig_entities.update_layout(showlegend=False)
+        st.plotly_chart(fig_entities, use_container_width=True)
+
+    # Road Hierarchy Severity
+    fig_hierarchy = px.box(
+        filtered_df,
+        x="road_hierarchy",
+        y="total_casualties",
+        color="road_hierarchy",
+        color_discrete_sequence=["#38BDF8", "#10B981", "#F59E0B", "#A855F7"],
+        points=False
+    )
+    apply_dark_theme(fig_hierarchy, "🛣️ ระดับความรุนแรงตามระดับสายทาง (Severity Index by Road Hierarchy)")
+    fig_hierarchy.update_yaxes(title="Casualties per Incident")
+    fig_hierarchy.update_xaxes(title="Road Hierarchy")
+    st.plotly_chart(fig_hierarchy, use_container_width=True)
+
+
+# -------------------------------------------------------------
+# TAB 3: Risk Mismatch & Simulation Engine
+# -------------------------------------------------------------
+with tab3:
+    st.subheader("การวิเคราะห์ความเสี่ยงซ้อนทับ (Risk Mismatch) และแบบจำลองมาตรการเชิงนโยบาย")
+
+    m_col1, m_col2 = st.columns([7, 5])
+    with m_col1:
+        # 4-Quadrant Scatter Matrix
+        sample_mismatch = filtered_df.sample(n=min(len(filtered_df), 500), random_state=42) if len(filtered_df) > 500 else filtered_df
+        fig_matrix = go.Figure()
+        fig_matrix.add_trace(go.Scatter(
+            x=sample_mismatch["road_risk_score"],
+            y=sample_mismatch["driver_behavior_risk_score"],
+            mode="markers",
+            marker=dict(
+                size=sample_mismatch["total_casualties"] * 3 + 5,
+                color=sample_mismatch["fatalities"],
+                colorscale=[[0, "#38BDF8"], [0.5, "#F59E0B"], [1, "#FF4136"]],
+                showscale=True,
+                colorbar=dict(title="Fatalities", tickfont=dict(color="#94A3B8"))
+            ),
+            text=[f"Province: {p}<br>Cause: {c}<br>Road: {r}" for p, c, r in zip(
+                sample_mismatch["province"], sample_mismatch["accident_cause"], sample_mismatch["road_hierarchy"]
+            )],
+            hoverinfo="text"
+        ))
+        fig_matrix.add_vline(x=50, line_width=1.5, line_dash="dash", line_color="#64748B")
+        fig_matrix.add_hline(y=50, line_width=1.5, line_dash="dash", line_color="#64748B")
+        fig_matrix.add_annotation(x=75, y=90, text="🔴 Critical Mismatch (Danger)", showarrow=False,
+                                 font=dict(color="#FF4136", size=12))
+        fig_matrix.add_annotation(x=25, y=90, text="🟡 Human Error Dominant", showarrow=False,
+                                 font=dict(color="#FFDC00", size=12))
+        fig_matrix.add_annotation(x=75, y=15, text="🟡 Road Defect Dominant", showarrow=False,
+                                 font=dict(color="#FFDC00", size=12))
+        fig_matrix.add_annotation(x=25, y=15, text="🟢 Baseline Low Risk", showarrow=False,
+                                 font=dict(color="#2ECC40", size=12))
+        apply_dark_theme(fig_matrix, "🎯 Safety Capability vs Risk Exposure Matrix (Infrastructure vs Behavior)")
+        fig_matrix.update_xaxes(title="Road Infrastructure Risk Score (0-100)", range=[0, 100])
+        fig_matrix.update_yaxes(title="Driver Behavioral Risk Score (0-100)", range=[0, 100])
+        st.plotly_chart(fig_matrix, use_container_width=True)
+
+    with m_col2:
+        # Safety Equipment Radar Chart
+        region_equip = filtered_df.groupby("region").agg({
+            "safety_equipment_used": lambda x: (x == "Yes").mean() * 100,
+            "fatalities": lambda x: (x > 0).mean() * 100,
+            "serious_injuries": lambda x: (x > 0).mean() * 100,
+        }).reset_index()
+
+        fig_radar = go.Figure()
+        for _, row in region_equip.iterrows():
+            fig_radar.add_trace(go.Scatterpolar(
+                r=[row["safety_equipment_used"], 100 - row["fatalities"], 100 - row["serious_injuries"]],
+                theta=["Equipment Usage %", "Survival Rate %", "Injury Prevention %"],
+                fill="toself",
+                name=row["region"]
+            ))
+        fig_radar.update_layout(
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, 100], color="#94A3B8", gridcolor="#334155"),
+                angularaxis=dict(color="#F8FAFC", gridcolor="#334155"),
+                bgcolor="#1E293B"
+            ),
+            paper_bgcolor=COLOR_CARD_BG,
+            font=dict(color="#94A3B8"),
+            margin=dict(l=30, r=30, t=50, b=30)
+        )
+        apply_dark_theme(fig_radar, "🛡️ ความพร้อมอุปกรณ์ความปลอดภัยเทียบอัตราการสูญเสีย (Radar Gap)")
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+    # -------------------------------------------------------------
+    # Simulation Section
+    # -------------------------------------------------------------
+    st.markdown("### 🎛️ Policy Simulation & Recalculation Engine")
+    st.markdown("ปรับแต่งตัวแปรนโยบายเพื่อจำลองการลดลงของจำนวนผู้เสียชีวิต บาดเจ็บ และความคุ้มค่าทางเศรษฐกิจ")
+
+    sim_col1, sim_col2, sim_col3 = st.columns(3)
+    with sim_col1:
+        speed_red = st.slider("🚗 กวดขันความเร็ว (Speed Reduction %):", min_value=0, max_value=50, value=20, step=5)
+    with sim_col2:
+        helmet_boost = st.slider("🪖 รณรงค์สวมหมวก/คาดเข็มขัด (Safety Equip Boost %):", min_value=0, max_value=50, value=25, step=5)
+    with sim_col3:
+        drunk_red = st.slider("🛑 ปราบปรามเมาแล้วขับ (Drunk Driving Crackdown %):", min_value=0, max_value=50, value=30, step=5)
+
+    sim_res = run_policy_simulation(
+        filtered_df,
+        speed_reduction_pct=speed_red,
+        helmet_boost_pct=helmet_boost,
+        drunk_reduction_pct=drunk_red
     )
 
-    kpis = calculate_kpis(filtered)
+    p1, p2, p3 = st.columns(3)
+    with p1:
+        st.metric(
+            "ประมาณการช่วยชีวิตได้ (Lives Saved)",
+            f"-{sim_res['fatalities_saved']} Lives",
+            f"จาก {sim_res['baseline_fatalities']} เหลือ {sim_res['simulated_fatalities']} ราย",
+            delta_color="normal"
+        )
+    with p2:
+        st.metric(
+            "ลดการบาดเจ็บสาหัส (Injuries Prevented)",
+            f"-{sim_res['serious_prevented']} Cases",
+            f"จาก {sim_res['baseline_serious']} เหลือ {sim_res['simulated_serious']} ราย",
+            delta_color="normal"
+        )
+    with p3:
+        st.metric(
+            "มูลค่าประหยัดได้ทางเศรษฐกิจ (Economic Savings)",
+            f"+฿{sim_res['economic_savings_mb']:,.1f} M THB",
+            "ตามเกณฑ์ประเมิน DLT / WHO",
+            delta_color="normal"
+        )
 
-    incidents_val = f"{kpis['total_incidents']:,}"
-    incidents_sub = "Recorded accidents"
+    # Editable Simulation Table using st.data_editor
+    st.markdown("#### 📝 Editable Simulation Data Table (ตารางแก้ไขข้อมูลจำลองสถานการณ์)")
+    st.caption("ดับเบิลคลิกแก้ไขตัวเลขในคอลัมน์ Fatalities หรือ Serious Injuries ได้โดยตรง ระบบจะบันทึกและจำลองผลแบบ Real-Time")
 
-    fatalities_val = f"{kpis['total_fatalities']:,}"
-    fatalities_sub = f"{kpis['fatality_rate']}% of incidents"
+    sample_edit_df = filtered_df.head(12)[[
+        "incident_id", "province", "road_hierarchy", "accident_cause",
+        "vehicle_type", "fatalities", "serious_injuries", "estimated_economic_loss_thb"
+    ]].copy()
 
-    injuries_val = f"{kpis['total_serious'] + kpis['total_slight']:,}"
-    injuries_sub = f"Serious: {kpis['total_serious']:,}"
-
-    rate_val = f"{kpis['fatality_rate']}%"
-    rate_sub = "Fatalities / Incidents"
-
-    blackspots_val = f"{kpis['high_risk_incidents']:,}"
-    blackspots_sub = f"{kpis['high_risk_share']}% Critical Zones"
-
-    loss_val = f"฿{kpis['total_loss_mb']:,.1f}M"
-    loss_sub = "Est. Economic Damage"
-
-    # Render appropriate Tab
-    if active_tab == "tab-1":
-        content = render_tab_casualties(filtered)
-    elif active_tab == "tab-2":
-        content = render_tab_risk_zones(filtered)
-    elif active_tab == "tab-3":
-        content = render_tab_risk_mismatch(filtered)
-    else:
-        content = html.Div("Tab not recognized.")
-
-    return (
-        incidents_val, incidents_sub,
-        fatalities_val, fatalities_sub,
-        injuries_val, injuries_sub,
-        rate_val, rate_sub,
-        blackspots_val, blackspots_sub,
-        loss_val, loss_sub,
-        content
+    edited_table = st.data_editor(
+        sample_edit_df,
+        column_config={
+            "incident_id": st.column_config.TextColumn("Incident ID", disabled=True),
+            "province": st.column_config.TextColumn("Province", disabled=True),
+            "road_hierarchy": st.column_config.TextColumn("Road Type", disabled=True),
+            "accident_cause": st.column_config.TextColumn("Cause", disabled=True),
+            "vehicle_type": st.column_config.TextColumn("Vehicle", disabled=True),
+            "fatalities": st.column_config.NumberColumn("Fatalities*", min_value=0, max_value=20, step=1),
+            "serious_injuries": st.column_config.NumberColumn("Serious Injuries*", min_value=0, max_value=50, step=1),
+            "estimated_economic_loss_thb": st.column_config.NumberColumn("Loss (THB)", format="฿%d", disabled=True)
+        },
+        disabled=["incident_id", "province", "road_hierarchy", "accident_cause", "vehicle_type", "estimated_economic_loss_thb"],
+        hide_index=True,
+        use_container_width=True,
+        key="simulation_table_editor"
     )
 
+    if edited_table is not None:
+        total_edited_fatalities = int(edited_table["fatalities"].sum())
+        orig_fatalities = int(sample_edit_df["fatalities"].sum())
+        diff_fat = total_edited_fatalities - orig_fatalities
+        if diff_fat != 0:
+            st.info(f"📊 ผลกระทบจากการปรับค่าในตารางจำลอง: ผู้เสียชีวิตรวมเปลี่ยนแปลง {diff_fat:+d} ราย (จาก {orig_fatalities} เป็น {total_edited_fatalities} ราย)")
 
-# Callback 3: Simulation Engine Calculations
-@app.callback(
-    Output("simulation-results-container", "children"),
-    Input("sim-slider-speed", "value"),
-    Input("sim-slider-helmet", "value"),
-    Input("sim-slider-drunk", "value"),
-    State("stored-raw-data", "data"),
-    prevent_initial_call=False
+# -------------------------------------------------------------
+# Footer
+# -------------------------------------------------------------
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: #64748B; font-size: 0.85rem; padding: 10px;'>"
+    "Thailand Road Accident Analytics System • Streamlit Framework Edition • Open Government Data License"
+    "</div>",
+    unsafe_allow_html=True
 )
-def update_simulation_outcomes(speed_val, helmet_val, drunk_val, data_json):
-    if not data_json:
-        return html.Div()
-    df = pd.read_json(io.StringIO(data_json), orient="split")
-    res = run_policy_simulation(df, speed_reduction_pct=speed_val or 0,
-                                helmet_boost_pct=helmet_val or 0,
-                                drunk_reduction_pct=drunk_val or 0)
-
-    return dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("Lives Saved (ประมาณการผู้เสียชีวิตที่ลดลง)", className="text-muted small"),
-                    html.H4(f"-{res['fatalities_saved']} Lives", className="text-success fw-bold"),
-                    html.Small(f"From {res['baseline_fatalities']} down to {res['simulated_fatalities']}", className="text-light")
-                ])
-            ], style={"backgroundColor": "#132338", "border": "1px solid #10B981", "borderRadius": "8px"})
-        ], md=4),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("Serious Injuries Prevented (ลดการบาดเจ็บสาหัส)", className="text-muted small"),
-                    html.H4(f"-{res['serious_prevented']} Cases", className="text-warning fw-bold"),
-                    html.Small(f"From {res['baseline_serious']} down to {res['simulated_serious']}", className="text-light")
-                ])
-            ], style={"backgroundColor": "#132338", "border": "1px solid #F59E0B", "borderRadius": "8px"})
-        ], md=4),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("Economic Savings (มูลค่าประหยัดได้ทางเศรษฐกิจ)", className="text-muted small"),
-                    html.H4(f"+฿{res['economic_savings_mb']:,.1f} M THB", className="text-info fw-bold"),
-                    html.Small("Based on DLT & WHO actuarial valuation", className="text-light")
-                ])
-            ], style={"backgroundColor": "#132338", "border": "1px solid #38BDF8", "borderRadius": "8px"})
-        ], md=4),
-    ], className="g-2")
-
-
-# Callback 4: Export CSV
-@app.callback(
-    Output("download-dataframe-csv", "data"),
-    Input("btn-export-csv", "n_clicks"),
-    State("filter-year", "value"),
-    State("filter-region", "value"),
-    State("filter-vehicle", "value"),
-    State("filter-period", "value"),
-    State("stored-raw-data", "data"),
-    prevent_initial_call=True
-)
-def export_filtered_csv(n_clicks, year, region, vehicle, period, data_json):
-    if not n_clicks:
-        return dash.no_update
-    df = pd.read_json(io.StringIO(data_json), orient="split")
-    filtered = filter_accident_data(
-        df,
-        years=[year] if year != "All" else None,
-        regions=[region] if region != "All" else None,
-        vehicle_types=[vehicle] if vehicle != "All" else None,
-        period_types=[period] if period != "All" else None
-    )
-    return dcc.send_data_frame(filtered.to_csv, "thailand_road_accidents_filtered.csv", index=False)
-
-
-if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1", port=8050)

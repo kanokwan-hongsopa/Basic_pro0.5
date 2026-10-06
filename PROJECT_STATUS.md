@@ -20,6 +20,7 @@
 | **7** | **Main Python Dash Application Integration** | ✅ Completed | `app.py` (Cross-filtering, Live KPI bar, File Upload, CSV Exporter) |
 | **8** | **Standalone Single-File Web Dashboard** | ✅ Completed | `index.html` (Tailwind CSS CDN + Chart.js + Vanilla JS + Live Simulation) |
 | **9** | **Testing, Validation & Git Commits** | ✅ Completed | Verified end-to-end callback execution, Plotly 7+ compatibility, Clean git commit |
+| **10** | **Streamlit Framework Conversion** | ✅ Completed | `app.py` (Streamlit edition), `.streamlit/config.toml`, `dash_app.py` backup |
 
 ---
 
@@ -128,3 +129,17 @@
   - **End-to-End Callbacks:** Tested `update_dashboard` and `update_simulation_outcomes` across all filter variations and tab switches (Status: Passed, 3,000 incidents, 773 fatalities, 100% reactive).
   - **Plotly 7+ & Pandas 3.0 Compatibility:** Addressed `title_font` and `io.StringIO` handling for modern library compatibility.
 - **Target Files:** All project files verified.
+
+---
+
+### Step 10: Streamlit Framework Conversion ✅
+- **Date:** 2026-10-06
+- **Action:** Converted the application to Streamlit as requested:
+  - Rebuilt `app.py` using native Streamlit API (`st.tabs`, `st.metric`, `st.plotly_chart`, `st.sidebar`, `st.slider`, `st.data_editor`).
+  - Implemented `.streamlit/config.toml` configuring Dark Slate Theme colors (`#0F172A`, `#1E293B`, `#38BDF8`).
+  - Added live interactive table editing with `st.data_editor` allowing real-time edits to incident casualties with automatic re-calculation.
+  - Backed up the Dash Plotly version into `dash_app.py` so both frameworks are available.
+  - Updated `requirements.txt` with `streamlit>=1.28.0`.
+  - Updated `README.md` with Streamlit execution guidelines.
+  - Tested Streamlit headless startup: Verified successful server launch on `http://localhost:8501`.
+- **Target Files:** `app.py`, `.streamlit/config.toml`, `dash_app.py`, `requirements.txt`, `README.md`

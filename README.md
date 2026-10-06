@@ -40,15 +40,15 @@ The dashboard is structured into three analytical tabs aligned with the Business
 
 ## 🛠️ Technology Stack & Requirements
 
-- **Backend / Web Application:** Python 3.10+ (Dash, Plotly, Dash Bootstrap Components, Flask)
-- **Data Manipulation & Computation:** Pandas, NumPy
-- **Interactive Geospatial & Visuals:** Plotly Express, Plotly Graph Objects, Mapbox / OpenStreetMap
-- **Styling & Theme:** Modern Dark Slate Analytics Theme with Safety Indicators:
+- **Primary Web Application:** Python 3.10+ (Streamlit, Plotly Express, Plotly Graph Objects)
+- **Alternative Frameworks:** Python Dash (`dash_app.py`), Standalone HTML (`index.html`)
+- **Data Manipulation & Computation:** Pandas, NumPy, openpyxl
+- **Styling & Theme:** Modern Dark Slate Analytics Theme (`.streamlit/config.toml`) with Safety Indicators:
   - Critical Red (`#FF4136`)
   - Warning Amber (`#FFDC00`)
   - Safe Green (`#2ECC40`)
   - Dark Slate Canvas (`#0F172A` / `#1E293B`)
-- **Standalone Client Option:** Single-file interactive HTML dashboard (`index.html`) using Tailwind CSS and Chart.js/Plotly.js for instant deployment without local server setup.
+- **Standalone Client Option:** Single-file interactive HTML dashboard (`index.html`) using Tailwind CSS and Chart.js/Plotly.js.
 
 ---
 
@@ -59,19 +59,23 @@ Basic_pro0.5/
 │
 ├── README.md                                         # Main project documentation & specification
 ├── PROJECT_STATUS.md                                 # Step-by-step implementation progress tracker
-├── requirements.txt                                  # Python dependencies
+├── requirements.txt                                  # Python dependencies (Streamlit, Dash, Plotly, Pandas)
+│
+├── .streamlit/
+│   └── config.toml                                   # Streamlit dark slate theme configuration
 │
 ├── brd_thailand_road_accident_analytics_dashboard.md # Business Requirements Document
 ├── thailand_road_accident_analysis.md                # System Architecture & Open Data Catalog
 │
-├── app.py                                            # Main Python Dash full-featured web application
+├── app.py                                            # Main Streamlit interactive web application
+├── dash_app.py                                       # Alternative Dash Plotly web application
 ├── index.html                                        # Standalone zero-dependency interactive dashboard
 │
 ├── data/
 │   ├── generate_dataset.py                           # Synthetic & open data generator script
 │   └── thailand_road_accidents.csv                   # Structured Thailand road accident dataset
 │
-├── components/                                       # Dash modular UI components
+├── components/                                       # Dash modular UI components (for Dash edition)
 │   ├── tab_casualties.py                             # Tab 1: Casualties & Vehicle Impact
 │   ├── tab_risk_zones.py                             # Tab 2: Risk Zones & Causes
 │   └── tab_risk_mismatch.py                          # Tab 3: Risk Mismatch & Simulation Engine
@@ -104,14 +108,15 @@ pip install -r requirements.txt
 python data/generate_dataset.py
 ```
 
-### 4. Run the Dash Application
+### 4. Run the Streamlit Application (Primary)
 ```bash
-python app.py
+streamlit run app.py
 ```
-Open your web browser and navigate to `http://127.0.0.1:8050/`.
+Open your web browser and navigate to **`http://localhost:8501/`**.
 
-### 5. Run the Standalone Browser Version
-Alternatively, open `index.html` directly in any modern browser for a lightweight, single-file interactive experience.
+### 5. Alternative Run Options
+- **Dash Plotly Application:** `python dash_app.py` (accessible at `http://127.0.0.1:8050/`)
+- **Standalone HTML Viewer:** Open `index.html` directly in any web browser without running a server.
 
 ---
 
