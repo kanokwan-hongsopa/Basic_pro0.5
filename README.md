@@ -4,7 +4,7 @@
 Create an Interactive Dashboard to compare the **"Return on Investment (ROI) and Educational Value"** alongside the **"Admission Competitiveness"** of Khon Kaen University (KKU).
 
 ## Project Scope & Requirements
-A multi-tab Python Dash/Plotly Dashboard focusing on:
+A multi-tab Python Streamlit/Plotly Dashboard focusing on:
 - KKU student statistics
 - Official TCAS admission metrics (capacity, applicants, competition rates, and score statistics from KKU Admissions and myTCAS)
 - Tuition fees
