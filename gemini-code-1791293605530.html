@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>AI-to-AI Handoff Specification: KKU TCAS & Graduate Outcomes</title>
+<style>
+  body { font-family: 'Sarabun', -apple-system, sans-serif; line-height: 1.6; padding: 20px; background: #f8f9fa; color: #212529; }
+  .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  h2 { color: #a73b24; border-bottom: 2px solid #a73b24; padding-bottom: 5px; }
+  pre { background: #272822; color: #f8f8f2; padding: 15px; border-radius: 5px; overflow-x: auto; }
+  .tag { background: #e9ecef; border-radius: 4px; padding: 2px 8px; font-size: 0.85em; font-weight: bold; }
+  .editable { border: 1px dashed #ced4da; padding: 10px; background: #fffbe6; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h2>🤖 Context Transfer Protocol (AI Hand-off)</h2>
+  <p><strong>Target Persona:</strong> Data Visualization AI / Dashboard Builder AI</p>
+  <p><strong>Task Purpose:</strong> แปลงโครงสร้างข้อมูล KKU TCAS & Graduate Outcomes ไปสร้างเป็น Interactive Dashboard</p>
+</div>
+
+<div class="card">
+  <h2>📊 Schema Protocol Definition (JSON Data Payload)</h2>
+  <p>คุณสามารถใช้ Schema JSON ด้านล่างนี้เป็นโครงสร้างหลักในการสร้าง Visualizations:</p>
+  <pre><code>{
+  "university": "Khon Kaen University",
+  "data_scope": ["TCAS Admissions", "Tuition Fees", "Graduate Outcomes", "Labor Demand"],
+  "tcas_distribution": {
+    "Round1_Portfolio": 25,
+    "Round2_Quota_NE": 55,
+    "Round3_Admission": 20
+  },
+  "clusters": [
+    {
+      "name": "Health Sciences",
+      "competition_ratio_avg": 95.0,
+      "avg_starting_salary": 32000,
+      "employment_rate_pct": 96.5,
+      "tuition_per_term": 18000,
+      "market_demand_status": "High Demand / Shortage"
+    },
+    {
+      "name": "STEM & AI/Data",
+      "competition_ratio_avg": 18.5,
+      "avg_starting_salary": 26500,
+      "employment_rate_pct": 91.2,
+      "tuition_per_term": 15000,
+      "market_demand_status": "High Demand"
+    },
+    {
+      "name": "Humanities & Social Sciences",
+      "competition_ratio_avg": 12.0,
+      "avg_starting_salary": 18500,
+      "employment_rate_pct": 86.0,
+      "tuition_per_term": 10000,
+      "market_demand_status": "Balanced / Moderate Oversupply"
+    }
+  ]
+}</code></pre>
+</div>
+
+<div class="card">
+  <h2>✏️ Editable Prompt Note for Next Step AI</h2>
+  <div class="editable" contenteditable="true">
+    <strong>Instructions for Antigravity AI:</strong><br>
+    1. ใช้อัตราการแข่งขันและรายได้เริ่มต้นสร้างเป็น Scatter Plot (X: Competition Ratio, Y: Starting Salary)<br>
+    2. ทำ Bar Chart แสดงความต่างของค่าเทอม vs เงินเดือนเริ่มต้น แยกตาม Cluster<br>
+    3. สร้าง Filter ให้ผู้ใช้สามารถเลือกดูข้อมูลตามกลุ่มสาขาวิชาได้
+  </div>
+</div>
+
+</body>
+</html>
