@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thailand Road Accident Analytics & Risk Safety Dashboard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              850: '#151e2e',
+              900: '#0f172a',
+              950: '#090d16',
+            },
+            danger: '#FF4136',
+            warning: '#FFDC00',
+            success: '#2ECC40',
+            accent: '#38BDF8',
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', 'Prompt', sans-serif;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    .editable-cell:focus {
+      outline: 2px solid #38bdf8;
+      background-color: #1e293b;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-danger">
+          <i data-lucide="shield-alert" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg md:text-xl font-bold tracking-tight text-white">Thailand Road Accident Analytics</h1>
+            <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">Live Simulation</span>
+          </div>
+          <p class="text-xs text-slate-400">ระบบวิเคราะห์ข้อมูลสถิติอุบัติเหตุทางถนน แหล่งข้อมูลเปิดภาครัฐ (DOH, ThaiRSC, RTP, DLT)</p>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="flex items-center gap-2.5">
+        <button id="btnResetFilters" class="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg flex items-center gap-1.5 transition">
+          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> ล้างตัวกรอง
+        </button>
+        <button id="btnExportData" class="px-3.5 py-1.5 text-xs font-medium bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg flex items-center gap-1.5 transition">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i> ส่งออกข้อมูล (CSV)
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+    <!-- Control Filters Bar -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg shadow-black/20">
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5 flex items-center gap-1.5">
+            <i data-lucide="calendar" class="w-3.5 h-3.5 text-cyan-400"></i> เลือกปีงบประมาณ (Year)
+          </label>
+          <select id="filterYear" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+            <option value="All">ทุกปี (2021 - 2026)</option>
+            <option value="2026">2026</option>
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5 flex items-center gap-1.5">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-amber-400"></i> ภูมิภาค (Region)
+          </label>
+          <select id="filterRegion" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+            <option value="All">ทุกภูมิภาคทั่วประเทศ</option>
+            <option value="Bangkok & Vicinity">กรุงเทพฯ และปริมณฑล</option>
+            <option value="Central">ภาคกลาง</option>
+            <option value="North">ภาคเหนือ</option>
+            <option value="Northeast">ภาคตะวันออกเฉียงเหนือ</option>
+            <option value="South">ภาคใต้</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5 flex items-center gap-1.5">
+            <i data-lucide="bike" class="w-3.5 h-3.5 text-rose-400"></i> ประเภทยานพาหนะ (Vehicle)
+          </label>
+          <select id="filterVehicle" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500">
+            <option value="All">ทุกประเภทยานพาหนะ</option>
+            <option value="Motorcycle">รถจักรยานยนต์ (Motorcycle)</option>
+            <option value="Private Car">รถยนต์ส่วนบุคคล (Private Car)</option>
+            <option value="Commercial Truck">รถบรรทุก (Truck)</option>
+            <option value="Public Bus/Van">รถโดยสารสาธารณะ (Bus/Van)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5 flex items-center gap-1.5">
+            <i data-lucide="clock" class="w-3.5 h-3.5 text-emerald-400"></i> ช่วงเวลาเทศกาล (Period)
+          </label>
+          <select id="filterPeriod" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+            <option value="All">ทุกช่วงเวลา</option>
+            <option value="Normal">ช่วงเวลาปกติ</option>
+            <option value="NewYear">เทศกาลปีใหม่ (7 วันอันตราย)</option>
+            <option value="Songkran">เทศกาลสงกรานต์ (7 วันอันตราย)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Executive KPI Summary Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <!-- Card 1: Total Incidents -->
+      <div class="bg-slate-900 border border-slate-800 border-l-4 border-l-cyan-500 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between text-slate-400 mb-1">
+          <span class="text-xs font-semibold uppercase tracking-wider">Total Incidents</span>
+          <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i>
+        </div>
+        <div id="kpiIncidents" class="text-2xl font-bold text-white tracking-tight">0</div>
+        <div class="text-[11px] text-cyan-400/90 mt-1 flex items-center gap-1">
+          <i data-lucide="arrow-up-right" class="w-3 h-3"></i> จำนวนครั้งอุบัติเหตุรวม
+        </div>
+      </div>
+
+      <!-- Card 2: Fatalities -->
+      <div class="bg-slate-900 border border-slate-800 border-l-4 border-l-rose-500 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between text-slate-400 mb-1">
+          <span class="text-xs font-semibold uppercase tracking-wider">Fatalities</span>
+          <i data-lucide="skull" class="w-4 h-4 text-rose-500"></i>
+        </div>
+        <div id="kpiFatalities" class="text-2xl font-bold text-rose-400 tracking-tight">0</div>
+        <div class="text-[11px] text-rose-400/90 mt-1 flex items-center gap-1">
+          <i data-lucide="alert-circle" class="w-3 h-3"></i> ผู้เสียชีวิต (ราย)
+        </div>
+      </div>
+
+      <!-- Card 3: Injuries -->
+      <div class="bg-slate-900 border border-slate-800 border-l-4 border-l-amber-500 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between text-slate-400 mb-1">
+          <span class="text-xs font-semibold uppercase tracking-wider">Total Injuries</span>
+          <i data-lucide="bandage" class="w-4 h-4 text-amber-400"></i>
+        </div>
+        <div id="kpiInjuries" class="text-2xl font-bold text-amber-300 tracking-tight">0</div>
+        <div class="text-[11px] text-amber-400/90 mt-1 flex items-center gap-1">
+          <i data-lucide="heart-pulse" class="w-3 h-3"></i> ผู้บาดเจ็บสาหัสและเล็กน้อย
+        </div>
+      </div>
+
+      <!-- Card 4: Fatality Index -->
+      <div class="bg-slate-900 border border-slate-800 border-l-4 border-l-emerald-500 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between text-slate-400 mb-1">
+          <span class="text-xs font-semibold uppercase tracking-wider">Fatality Rate</span>
+          <i data-lucide="percent" class="w-4 h-4 text-emerald-400"></i>
+        </div>
+        <div id="kpiFatalityRate" class="text-2xl font-bold text-white tracking-tight">0.0%</div>
+        <div class="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1">
+          <i data-lucide="trending-up" class="w-3 h-3"></i> สัดส่วนเสียชีวิตต่ออุบัติเหตุ
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Tab Buttons -->
+    <div class="flex border-b border-slate-800 gap-2">
+      <button id="tabBtn1" class="tab-btn px-4 py-2.5 text-xs font-semibold border-b-2 border-cyan-500 text-cyan-400 transition" onclick="switchTab('tab1')">
+        📊 Tab 1: สถิติและประเภทยานพาหนะ
+      </button>
+      <button id="tabBtn2" class="tab-btn px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition" onclick="switchTab('tab2')">
+        🗺️ Tab 2: สาเหตุและพื้นที่เสี่ยง
+      </button>
+      <button id="tabBtn3" class="tab-btn px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition" onclick="switchTab('tab3')">
+        🎛️ Tab 3: การจำลองสถานการณ์ (Live Simulation)
+      </button>
+    </div>
+
+    <!-- Tab 1 Container -->
+    <div id="tab1Content" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Monthly Trends Chart (8 cols) -->
+        <div class="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-md">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <i data-lucide="line-chart" class="w-4 h-4 text-cyan-400"></i> แนวโน้มอุบัติเหตุรายเดือน (Monthly Accident Trends)
+            </h3>
+            <span class="text-[11px] text-slate-400">ม.ค. - ธ.ค.</span>
+          </div>
+          <div class="h-64 sm:h-72">
+            <canvas id="monthlyTrendChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Vehicle Type Share (4 cols) -->
+        <div class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-md">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <i data-lucide="pie-chart" class="w-4 h-4 text-rose-400"></i> สัดส่วนประเภทยานพาหนะ (Vehicle Type Share)
+            </h3>
+          </div>
+          <div class="h-64 sm:h-72 flex items-center justify-center">
+            <canvas id="vehicleDoughnutChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2 Container -->
+    <div id="tab2Content" class="hidden space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Causes Breakdown (6 cols) -->
+        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-md">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <i data-lucide="bar-chart-2" class="w-4 h-4 text-amber-400"></i> สาเหตุหลักของการเกิดอุบัติเหตุ (Top Accident Causes)
+            </h3>
+          </div>
+          <div class="h-72">
+            <canvas id="causesBarChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Regional Casualty Breakdown (6 cols) -->
+        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-md">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <i data-lucide="map" class="w-4 h-4 text-emerald-400"></i> ความรุนแรงแยกตามภูมิภาค (Regional Severity)
+            </h3>
+          </div>
+          <div class="h-72">
+            <canvas id="regionalBarChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3 Container: Simulation & Editable Table -->
+    <div id="tab3Content" class="hidden space-y-6">
+      <!-- Policy Intervention Sliders -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
+        <div class="flex items-center gap-2 mb-4">
+          <i data-lucide="sliders" class="w-5 h-5 text-cyan-400"></i>
+          <h3 class="text-base font-semibold text-white">แบบจำลองผลลัพธ์เชิงนโยบาย (Policy Intervention Modeler)</h3>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300 font-medium">กวดขันความเร็ว (Speed Reduction):</span>
+              <span id="labelSpeedVal" class="text-cyan-400 font-bold">20%</span>
+            </div>
+            <input type="range" id="sliderSpeed" min="0" max="50" step="5" value="20" class="w-full accent-cyan-400 cursor-pointer">
+            <p class="text-[11px] text-slate-400">ลดพฤติกรรมขับเร็วเกินกำหนดบนทางหลวงสายหลัก</p>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300 font-medium">รณรงค์สวมหมวก/คาดเข็มขัด (Helmet/Belt Boost):</span>
+              <span id="labelHelmetVal" class="text-rose-400 font-bold">25%</span>
+            </div>
+            <input type="range" id="sliderHelmet" min="0" max="50" step="5" value="25" class="w-full accent-rose-400 cursor-pointer">
+            <p class="text-[11px] text-slate-400">เพิ่มการใช้อุปกรณ์ความปลอดภัยในผู้ใช้จักรยานยนต์</p>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300 font-medium">ปราบปรามเมาแล้วขับ (Drunk Driving Enforcement):</span>
+              <span id="labelDrunkVal" class="text-amber-400 font-bold">30%</span>
+            </div>
+            <input type="range" id="sliderDrunk" min="0" max="50" step="5" value="30" class="w-full accent-amber-400 cursor-pointer">
+            <p class="text-[11px] text-slate-400">ตั้งด่านตรวจแอลกอฮอล์ช่วงเทศกาลและยามค่ำคืน</p>
+          </div>
+        </div>
+
+        <!-- Live Projection Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 pt-5 border-t border-slate-800">
+          <div class="bg-emerald-950/40 border border-emerald-500/30 rounded-lg p-3.5">
+            <div class="text-xs text-emerald-300 font-medium">ประมาณการช่วยชีวิตได้ (Lives Saved):</div>
+            <div id="simLivesSaved" class="text-2xl font-bold text-emerald-400 mt-1">-0 ราย</div>
+            <div class="text-[11px] text-emerald-300/80 mt-0.5">ลดอัตราการเสียชีวิตจากเหตุการณ์รุนแรง</div>
+          </div>
+          <div class="bg-amber-950/40 border border-amber-500/30 rounded-lg p-3.5">
+            <div class="text-xs text-amber-300 font-medium">ลดการบาดเจ็บสาหัส (Injuries Prevented):</div>
+            <div id="simInjuriesSaved" class="text-2xl font-bold text-amber-400 mt-1">-0 ราย</div>
+            <div class="text-[11px] text-amber-300/80 mt-0.5">ลดภาระห้องฉุกเฉินและสาธารณสุข</div>
+          </div>
+          <div class="bg-cyan-950/40 border border-cyan-500/30 rounded-lg p-3.5">
+            <div class="text-xs text-cyan-300 font-medium">มูลค่าประหยัดได้ทางเศรษฐกิจ (Economic Savings):</div>
+            <div id="simEconomicSavings" class="text-2xl font-bold text-cyan-400 mt-1">+฿0.0 ล้าน</div>
+            <div class="text-[11px] text-cyan-300/80 mt-0.5">คำนวณตามมาตรฐาน DOH & WHO Thailand</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Editable Data Table -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div>
+            <h3 class="text-base font-semibold text-white flex items-center gap-2">
+              <i data-lucide="table" class="w-4 h-4 text-cyan-400"></i>
+              ตารางข้อมูลสถานการณ์จำลอง (Interactive Editable Simulation Table)
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">
+              คุณสามารถดับเบิลคลิกหรือแก้ไขตัวเลขในช่องสีฟ้า (Incidents / Fatalities) เพื่อดูการ Re-calculate ข้อมูลสดของทั้ง Dashboard ได้ทันที!
+            </p>
+          </div>
+          <button id="btnResetTable" class="self-start sm:self-auto px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">
+            รีเซ็ตข้อมูลตารางเริ่มต้น
+          </button>
+        </div>
+
+        <div class="overflow-x-auto custom-scroll border border-slate-800 rounded-lg">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 uppercase font-semibold text-[11px] border-b border-slate-800">
+              <tr>
+                <th class="px-4 py-3">ภูมิภาค (Region)</th>
+                <th class="px-4 py-3">ประเภทยานพาหนะ</th>
+                <th class="px-4 py-3">สาเหตุหลัก</th>
+                <th class="px-4 py-3 text-cyan-400">จำนวนอุบัติเหตุ (Incidents)*</th>
+                <th class="px-4 py-3 text-rose-400">ผู้เสียชีวิต (Fatalities)*</th>
+                <th class="px-4 py-3">ผู้บาดเจ็บ (Injuries)</th>
+                <th class="px-4 py-3">ความสูญเสีย (ล้านบาท)</th>
+              </tr>
+            </thead>
+            <tbody id="editableTableBody" class="divide-y divide-slate-800">
+              <!-- Dynamically Populated Rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <span>© 2026 Thailand Road Accident Analytics System • Open Government Data License</span>
+      <span>พัฒนาตามข้อกำหนด BRD และ Thailand Road Safety Framework</span>
+    </div>
+  </footer>
+
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Default Seed Dataset
+    const initialRecords = [
+      { id: 1, region: "Bangkok & Vicinity", vehicle: "Motorcycle", cause: "Speeding (ขับรถเร็วเกินกำหนด)", incidents: 410, fatalities: 32, injuries: 395, lossMb: 185.0 },
+      { id: 2, region: "Bangkok & Vicinity", vehicle: "Private Car", cause: "Cutting off (ตัดหน้ากระชั้นชิด)", incidents: 280, fatalities: 8, injuries: 140, lossMb: 72.0 },
+      { id: 3, region: "Central", vehicle: "Motorcycle", cause: "Drunk driving (เมาแล้วขับ)", incidents: 330, fatalities: 29, injuries: 310, lossMb: 165.5 },
+      { id: 4, region: "Central", vehicle: "Commercial Truck", cause: "Fatigue (หลับใน)", incidents: 195, fatalities: 24, injuries: 120, lossMb: 142.0 },
+      { id: 5, region: "North", vehicle: "Motorcycle", cause: "Speeding (ขับรถเร็วเกินกำหนด)", incidents: 345, fatalities: 26, injuries: 320, lossMb: 154.0 },
+      { id: 6, region: "North", vehicle: "Private Car", cause: "Road defect (ถนนลื่น/ชำรุด)", incidents: 160, fatalities: 9, injuries: 110, lossMb: 68.0 },
+      { id: 7, region: "Northeast", vehicle: "Motorcycle", cause: "Drunk driving (เมาแล้วขับ)", incidents: 460, fatalities: 44, injuries: 430, lossMb: 245.0 },
+      { id: 8, region: "Northeast", vehicle: "Commercial Truck", cause: "Cutting off (ตัดหน้ากระชั้นชิด)", incidents: 210, fatalities: 19, injuries: 150, lossMb: 115.0 },
+      { id: 9, region: "South", vehicle: "Motorcycle", cause: "Speeding (ขับรถเร็วเกินกำหนด)", incidents: 290, fatalities: 22, injuries: 275, lossMb: 130.0 },
+      { id: 10, region: "South", vehicle: "Public Bus/Van", cause: "Road defect (ถนนลื่น/ชำรุด)", incidents: 95, fatalities: 11, injuries: 130, lossMb: 85.0 },
+    ];
+
+    let currentRecords = JSON.parse(JSON.stringify(initialRecords));
+
+    // Chart instances
+    let monthlyChart = null;
+    let vehicleChart = null;
+    let causesChart = null;
+    let regionalChart = null;
+
+    // Tab switcher
+    function switchTab(tabKey) {
+      document.getElementById('tab1Content').classList.add('hidden');
+      document.getElementById('tab2Content').classList.add('hidden');
+      document.getElementById('tab3Content').classList.add('hidden');
+
+      document.getElementById('tabBtn1').className = "tab-btn px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition";
+      document.getElementById('tabBtn2').className = "tab-btn px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition";
+      document.getElementById('tabBtn3').className = "tab-btn px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition";
+
+      if (tabKey === 'tab1') {
+        document.getElementById('tab1Content').classList.remove('hidden');
+        document.getElementById('tabBtn1').className = "tab-btn px-4 py-2.5 text-xs font-semibold border-b-2 border-cyan-500 text-cyan-400 transition";
+      } else if (tabKey === 'tab2') {
+        document.getElementById('tab2Content').classList.remove('hidden');
+        document.getElementById('tabBtn2').className = "tab-btn px-4 py-2.5 text-xs font-semibold border-b-2 border-cyan-500 text-cyan-400 transition";
+        renderTab2Charts();
+      } else if (tabKey === 'tab3') {
+        document.getElementById('tab3Content').classList.remove('hidden');
+        document.getElementById('tabBtn3').className = "tab-btn px-4 py-2.5 text-xs font-semibold border-b-2 border-cyan-500 text-cyan-400 transition";
+      }
+    }
+
+    // Filter Logic
+    function getFilteredData() {
+      const year = document.getElementById('filterYear').value;
+      const region = document.getElementById('filterRegion').value;
+      const vehicle = document.getElementById('filterVehicle').value;
+
+      return currentRecords.filter(r => {
+        if (region !== 'All' && r.region !== region) return false;
+        if (vehicle !== 'All' && r.vehicle !== vehicle) return false;
+        return true;
+      });
+    }
+
+    // Recalculate KPIs and Charts
+    function refreshDashboard() {
+      const filtered = getFilteredData();
+
+      const totalIncidents = filtered.reduce((sum, r) => sum + Number(r.incidents), 0);
+      const totalFatalities = filtered.reduce((sum, r) => sum + Number(r.fatalities), 0);
+      const totalInjuries = filtered.reduce((sum, r) => sum + Number(r.injuries), 0);
+      const fatalityRate = totalIncidents > 0 ? ((totalFatalities / totalIncidents) * 100).toFixed(1) : 0;
+
+      // Update KPI Cards
+      document.getElementById('kpiIncidents').innerText = totalIncidents.toLocaleString();
+      document.getElementById('kpiFatalities').innerText = totalFatalities.toLocaleString();
+      document.getElementById('kpiInjuries').innerText = totalInjuries.toLocaleString();
+      document.getElementById('kpiFatalityRate').innerText = `${fatalityRate}%`;
+
+      // Update Charts
+      updateTab1Charts(filtered);
+      if (!document.getElementById('tab2Content').classList.contains('hidden')) {
+        renderTab2Charts();
+      }
+      recalculateSimulationProjections();
+    }
+
+    // Tab 1 Charts
+    function updateTab1Charts(data) {
+      // Monthly distribution estimate
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const baseTotal = data.reduce((sum, r) => sum + Number(r.incidents), 0);
+      const monthlyIncidents = [
+        Math.round(baseTotal * 0.09), Math.round(baseTotal * 0.07), Math.round(baseTotal * 0.08),
+        Math.round(baseTotal * 0.13), Math.round(baseTotal * 0.07), Math.round(baseTotal * 0.07),
+        Math.round(baseTotal * 0.08), Math.round(baseTotal * 0.07), Math.round(baseTotal * 0.07),
+        Math.round(baseTotal * 0.08), Math.round(baseTotal * 0.08), Math.round(baseTotal * 0.11)
+      ];
+
+      if (monthlyChart) monthlyChart.destroy();
+      const ctxLine = document.getElementById('monthlyTrendChart').getContext('2d');
+      monthlyChart = new Chart(ctxLine, {
+        type: 'line',
+        data: {
+          labels: months,
+          datasets: [{
+            label: 'Incidents (ครั้ง)',
+            data: monthlyIncidents,
+            borderColor: '#38BDF8',
+            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: '#38BDF8',
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
+            y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+
+      // Vehicle Doughnut
+      const vehMap = {};
+      data.forEach(r => {
+        vehMap[r.vehicle] = (vehMap[r.vehicle] || 0) + Number(r.incidents);
+      });
+      const vehLabels = Object.keys(vehMap);
+      const vehValues = Object.values(vehMap);
+
+      if (vehicleChart) vehicleChart.destroy();
+      const ctxDonut = document.getElementById('vehicleDoughnutChart').getContext('2d');
+      vehicleChart = new Chart(ctxDonut, {
+        type: 'doughnut',
+        data: {
+          labels: vehLabels,
+          datasets: [{
+            data: vehValues,
+            backgroundColor: ['#F43F5E', '#38BDF8', '#F59E0B', '#10B981'],
+            borderWidth: 2,
+            borderColor: '#0f172a'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 11 } } }
+          }
+        }
+      });
+    }
+
+    // Tab 2 Charts
+    function renderTab2Charts() {
+      const filtered = getFilteredData();
+
+      // Causes Bar Chart
+      const causesMap = {};
+      filtered.forEach(r => {
+        causesMap[r.cause] = (causesMap[r.cause] || 0) + Number(r.incidents);
+      });
+      const sortedCauses = Object.entries(causesMap).sort((a,b) => b[1] - a[1]);
+
+      if (causesChart) causesChart.destroy();
+      const ctxCauses = document.getElementById('causesBarChart').getContext('2d');
+      causesChart = new Chart(ctxCauses, {
+        type: 'bar',
+        data: {
+          labels: sortedCauses.map(c => c[0]),
+          datasets: [{
+            label: 'Incidents',
+            data: sortedCauses.map(c => c[1]),
+            backgroundColor: '#F59E0B',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
+            y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+          }
+        }
+      });
+
+      // Regional Bar Chart
+      const regMap = {};
+      filtered.forEach(r => {
+        if (!regMap[r.region]) regMap[r.region] = { fatalities: 0, injuries: 0 };
+        regMap[r.region].fatalities += Number(r.fatalities);
+        regMap[r.region].injuries += Number(r.injuries);
+      });
+
+      if (regionalChart) regionalChart.destroy();
+      const ctxReg = document.getElementById('regionalBarChart').getContext('2d');
+      regionalChart = new Chart(ctxReg, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(regMap),
+          datasets: [
+            { label: 'Fatalities (เสียชีวิต)', data: Object.values(regMap).map(v => v.fatalities), backgroundColor: '#FF4136' },
+            { label: 'Injuries (บาดเจ็บ)', data: Object.values(regMap).map(v => v.injuries), backgroundColor: '#FFDC00' }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#cbd5e1' } } },
+          scales: {
+            x: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+            y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+    }
+
+    // Populate Editable Simulation Table
+    function renderEditableTable() {
+      const tbody = document.getElementById('editableTableBody');
+      tbody.innerHTML = '';
+
+      currentRecords.forEach((record, index) => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-800/60 transition";
+        tr.innerHTML = `
+          <td class="px-4 py-2.5 font-medium text-slate-200">${record.region}</td>
+          <td class="px-4 py-2.5 text-slate-300">${record.vehicle}</td>
+          <td class="px-4 py-2.5 text-slate-400">${record.cause}</td>
+          <td class="px-4 py-2.5">
+            <span contenteditable="true" data-index="${index}" data-field="incidents"
+                  class="editable-cell px-2 py-1 rounded bg-cyan-950/60 text-cyan-300 font-semibold border border-cyan-800 inline-block min-w-[50px] text-center">
+              ${record.incidents}
+            </span>
+          </td>
+          <td class="px-4 py-2.5">
+            <span contenteditable="true" data-index="${index}" data-field="fatalities"
+                  class="editable-cell px-2 py-1 rounded bg-rose-950/60 text-rose-300 font-semibold border border-rose-800 inline-block min-w-[50px] text-center">
+              ${record.fatalities}
+            </span>
+          </td>
+          <td class="px-4 py-2.5 text-amber-300 font-medium">${record.injuries}</td>
+          <td class="px-4 py-2.5 text-slate-300 font-medium">฿${record.lossMb.toFixed(1)}M</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Attach cell blur / input listener for live calculation
+      document.querySelectorAll('.editable-cell').forEach(cell => {
+        cell.addEventListener('blur', function() {
+          const idx = parseInt(this.getAttribute('data-index'));
+          const field = this.getAttribute('data-field');
+          const val = parseFloat(this.innerText.replace(/,/g, '')) || 0;
+
+          currentRecords[idx][field] = Math.max(0, val);
+          refreshDashboard();
+        });
+        cell.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            this.blur();
+          }
+        });
+      });
+    }
+
+    // Policy Simulation Projections
+    function recalculateSimulationProjections() {
+      const speedPct = parseFloat(document.getElementById('sliderSpeed').value);
+      const helmetPct = parseFloat(document.getElementById('sliderHelmet').value);
+      const drunkPct = parseFloat(document.getElementById('sliderDrunk').value);
+
+      document.getElementById('labelSpeedVal').innerText = `${speedPct}%`;
+      document.getElementById('labelHelmetVal').innerText = `${helmetPct}%`;
+      document.getElementById('labelDrunkVal').innerText = `${drunkPct}%`;
+
+      const filtered = getFilteredData();
+      const baseFatalities = filtered.reduce((sum, r) => sum + Number(r.fatalities), 0);
+      const baseInjuries = filtered.reduce((sum, r) => sum + Number(r.injuries), 0);
+
+      // Estimated effect model
+      const livesSaved = Math.round(
+        (baseFatalities * (speedPct / 100) * 0.35) +
+        (baseFatalities * (helmetPct / 100) * 0.25) +
+        (baseFatalities * (drunkPct / 100) * 0.30)
+      );
+
+      const injuriesSaved = Math.round(
+        (baseInjuries * (speedPct / 100) * 0.25) +
+        (baseInjuries * (drunkPct / 100) * 0.20)
+      );
+
+      const economicSavedMb = (livesSaved * 5.0 + injuriesSaved * 0.8).toFixed(1);
+
+      document.getElementById('simLivesSaved').innerText = `-${livesSaved} ราย`;
+      document.getElementById('simInjuriesSaved').innerText = `-${injuriesSaved} ราย`;
+      document.getElementById('simEconomicSavings').innerText = `+฿${parseFloat(economicSavedMb).toLocaleString()} ล้าน`;
+    }
+
+    // Event Listeners
+    document.getElementById('filterYear').addEventListener('change', refreshDashboard);
+    document.getElementById('filterRegion').addEventListener('change', refreshDashboard);
+    document.getElementById('filterVehicle').addEventListener('change', refreshDashboard);
+    document.getElementById('filterPeriod').addEventListener('change', refreshDashboard);
+
+    document.getElementById('sliderSpeed').addEventListener('input', recalculateSimulationProjections);
+    document.getElementById('sliderHelmet').addEventListener('input', recalculateSimulationProjections);
+    document.getElementById('sliderDrunk').addEventListener('input', recalculateSimulationProjections);
+
+    document.getElementById('btnResetFilters').addEventListener('click', () => {
+      document.getElementById('filterYear').value = 'All';
+      document.getElementById('filterRegion').value = 'All';
+      document.getElementById('filterVehicle').value = 'All';
+      document.getElementById('filterPeriod').value = 'All';
+      refreshDashboard();
+    });
+
+    document.getElementById('btnResetTable').addEventListener('click', () => {
+      currentRecords = JSON.parse(JSON.stringify(initialRecords));
+      renderEditableTable();
+      refreshDashboard();
+    });
+
+    // CSV Export
+    document.getElementById('btnExportData').addEventListener('click', () => {
+      const data = getFilteredData();
+      const headers = ["id", "region", "vehicle", "cause", "incidents", "fatalities", "injuries", "lossMb"];
+      const csvRows = [headers.join(",")];
+      data.forEach(r => {
+        csvRows.push(`${r.id},"${r.region}","${r.vehicle}","${r.cause}",${r.incidents},${r.fatalities},${r.injuries},${r.lossMb}`);
+      });
+      const blob = new Blob([csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `thailand_road_accidents_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Initial Load
+    renderEditableTable();
+    refreshDashboard();
+  </script>
+</body>
+</html>
