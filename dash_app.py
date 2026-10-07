@@ -1,6 +1,9 @@
 """
 Thailand Road Accident Analytics & Safety Dashboard
 Main Application File (Python Dash + Plotly + Bootstrap)
+
+All data loaded from REAL Thai Government Open Data (Ministry of Transport).
+No synthetic or mock records are generated.
 """
 
 import os
@@ -33,7 +36,7 @@ app = dash.Dash(
 )
 server = app.server
 
-# Load default dataset
+# Load default dataset from real official open data
 raw_df = load_accident_data()
 
 # Global Options
@@ -70,8 +73,8 @@ def create_kpi_card(title, value_id, subtext_id, border_color="#38BDF8", icon="�
 
 # App Layout
 app.layout = dbc.Container([
-    # Client-side In-Memory Store
-    dcc.Store(id="stored-raw-data", data=raw_df.to_json(orient="split", date_format="iso")),
+    # Client-side In-Memory Store (None initially, uses server-side raw_df)
+    dcc.Store(id="stored-raw-data", data=None),
     dcc.Download(id="download-dataframe-csv"),
 
     # Header Navbar
@@ -107,6 +110,16 @@ app.layout = dbc.Container([
         ], md=4)
     ], className="border-bottom border-secondary mb-3 align-items-center"),
 
+    # Official Data Notice Banner (STEP 5)
+    dbc.Alert([
+        html.H5("✅ ข้อมูลหลักใน Dashboard มาจาก Open Data ของหน่วยงานภาครัฐ", className="alert-heading fw-bold mb-1 text-success"),
+        html.P(
+            f"สถิติอุบัติเหตุ พิกัดจุดเสี่ยง และตัวเลขความสูญเสียทั้งหมด (รวม {len(raw_df):,} รายการ) มาจากชุดข้อมูลเปิดกระทรวงคมนาคม (data.go.th & mot.go.th) "
+            "โดยครอบคลุมกรมทางหลวง (DOH), กรมทางหลวงชนบท (DRR) และการทางพิเศษฯ (EXAT) ไม่มีการสุ่มตัวเลขหรือใช้ข้อมูลจำลอง",
+            className="mb-0 small"
+        )
+    ], color="success", className="mb-3 border-start border-success border-4"),
+
     # Upload Notification Alert
     html.Div(id="upload-status-alert"),
 
@@ -140,24 +153,12 @@ app.layout = dbc.Container([
 
     # Executive KPI Summary Cards
     dbc.Row([
-        dbc.Col([
-            create_kpi_card("Total Incidents", "kpi-incidents", "kpi-incidents-sub", "#38BDF8", "💥")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("Total Fatalities", "kpi-fatalities", "kpi-fatalities-sub", COLOR_CRITICAL_RED, "⚰️")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("Total Injuries", "kpi-injuries", "kpi-injuries-sub", COLOR_WARNING_AMBER, "🩹")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("Fatality Rate", "kpi-fatality-rate", "kpi-fatality-rate-sub", "#F43F5E", "⚠️")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("High Risk Blackspots", "kpi-blackspots", "kpi-blackspots-sub", "#FB923C", "📍")
-        ], xs=6, sm=4, md=2, className="mb-3"),
-        dbc.Col([
-            create_kpi_card("Economic Loss", "kpi-loss", "kpi-loss-sub", COLOR_SAFE_GREEN, "💸")
-        ], xs=6, sm=4, md=2, className="mb-3"),
+        dbc.Col(create_kpi_card("Total Incidents", "kpi-incidents", "kpi-incidents-sub", "#38BDF8", "🚗"), xs=6, md=4, lg=2, className="mb-3"),
+        dbc.Col(create_kpi_card("Fatalities", "kpi-fatalities", "kpi-fatalities-sub", COLOR_CRITICAL_RED, "💀"), xs=6, md=4, lg=2, className="mb-3"),
+        dbc.Col(create_kpi_card("Total Injuries", "kpi-injuries", "kpi-injuries-sub", COLOR_WARNING_AMBER, "🏥"), xs=6, md=4, lg=2, className="mb-3"),
+        dbc.Col(create_kpi_card("Fatality Rate", "kpi-fatality-rate", "kpi-fatality-rate-sub", COLOR_CRITICAL_RED, "📈"), xs=6, md=4, lg=2, className="mb-3"),
+        dbc.Col(create_kpi_card("Critical Incidents", "kpi-blackspots", "kpi-blackspots-sub", COLOR_WARNING_AMBER, "⚠️"), xs=6, md=4, lg=2, className="mb-3"),
+        dbc.Col(create_kpi_card("Economic Loss", "kpi-loss", "kpi-loss-sub", COLOR_SAFE_GREEN, "฿"), xs=6, md=4, lg=2, className="mb-3"),
     ], className="g-2 mb-2"),
 
     # Main Dashboard Tabs
@@ -175,7 +176,7 @@ app.layout = dbc.Container([
             label_class_name="text-light"
         ),
         dbc.Tab(
-            label="🔬 Tab 3: Risk Mismatch & Simulation",
+            label="🔬 Tab 3: Risk Mismatch & Simulation Engine",
             tab_id="tab-3",
             active_tab_class_name="fw-bold text-info border-info",
             label_class_name="text-light"
@@ -192,7 +193,7 @@ app.layout = dbc.Container([
     # Footer
     html.Footer([
         html.Div([
-            html.Span("Open Government Data Attribution: Department of Highways (DOH) • ThaiRSC • RTP • DLT", className="text-muted small"),
+            html.Span("Open Government Data Attribution: Ministry of Transport (MOT) • Department of Highways (DOH) • Department of Rural Roads (DRR) • EXAT", className="text-muted small"),
             html.Span(" | Built for Thailand Road Safety & Analytics Intelligence", className="text-muted small")
         ], className="text-center py-4 border-top border-secondary mt-4")
     ])
@@ -243,8 +244,11 @@ def handle_file_upload(contents, filename, current_data_json):
     Input("stored-raw-data", "data")
 )
 def update_dashboard(year, region, vehicle, period, active_tab, data_json):
-    import io
-    df = pd.read_json(io.StringIO(data_json), orient="split")
+    if data_json:
+        df = pd.read_json(io.StringIO(data_json), orient="split")
+    else:
+        df = raw_df
+
     filtered = filter_accident_data(
         df,
         years=[year] if year != "All" else None,
@@ -256,24 +260,25 @@ def update_dashboard(year, region, vehicle, period, active_tab, data_json):
     kpis = calculate_kpis(filtered)
 
     incidents_val = f"{kpis['total_incidents']:,}"
-    incidents_sub = "Recorded accidents"
+    incidents_sub = "Recorded accidents (จริง)"
 
     fatalities_val = f"{kpis['total_fatalities']:,}"
-    fatalities_sub = f"{kpis['fatality_rate']}% of incidents"
+    fatalities_sub = f"{kpis['fatality_rate']}% fatality rate"
 
-    injuries_val = f"{kpis['total_serious'] + kpis['total_slight']:,}"
-    injuries_sub = f"Serious: {kpis['total_serious']:,}"
+    total_inj = kpis['total_serious'] + kpis['total_slight']
+    injuries_val = f"{total_inj:,}"
+    injuries_sub = f"{kpis['total_serious']:,} serious cases"
 
-    rate_val = f"{kpis['fatality_rate']}%"
-    rate_sub = "Fatalities / Incidents"
+    fatality_rate_val = f"{kpis['fatality_rate']}%"
+    fatality_rate_sub = "per 100 incidents"
 
     blackspots_val = f"{kpis['high_risk_incidents']:,}"
-    blackspots_sub = f"{kpis['high_risk_share']}% Critical Zones"
+    blackspots_sub = f"{kpis['high_risk_share']}% fatal cases"
 
     loss_val = f"฿{kpis['total_loss_mb']:,.1f}M"
-    loss_sub = "Est. Economic Damage"
+    loss_sub = "Estimated DOH/TDRI metric"
 
-    # Render appropriate Tab
+    # Tab Rendering
     if active_tab == "tab-1":
         content = render_tab_casualties(filtered)
     elif active_tab == "tab-2":
@@ -281,68 +286,20 @@ def update_dashboard(year, region, vehicle, period, active_tab, data_json):
     elif active_tab == "tab-3":
         content = render_tab_risk_mismatch(filtered)
     else:
-        content = html.Div("Tab not recognized.")
+        content = html.Div("Tab not found.", className="text-warning")
 
     return (
         incidents_val, incidents_sub,
         fatalities_val, fatalities_sub,
         injuries_val, injuries_sub,
-        rate_val, rate_sub,
+        fatality_rate_val, fatality_rate_sub,
         blackspots_val, blackspots_sub,
         loss_val, loss_sub,
         content
     )
 
 
-# Callback 3: Simulation Engine Calculations
-@app.callback(
-    Output("simulation-results-container", "children"),
-    Input("sim-slider-speed", "value"),
-    Input("sim-slider-helmet", "value"),
-    Input("sim-slider-drunk", "value"),
-    State("stored-raw-data", "data"),
-    prevent_initial_call=False
-)
-def update_simulation_outcomes(speed_val, helmet_val, drunk_val, data_json):
-    if not data_json:
-        return html.Div()
-    df = pd.read_json(io.StringIO(data_json), orient="split")
-    res = run_policy_simulation(df, speed_reduction_pct=speed_val or 0,
-                                helmet_boost_pct=helmet_val or 0,
-                                drunk_reduction_pct=drunk_val or 0)
-
-    return dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("Lives Saved (ประมาณการผู้เสียชีวิตที่ลดลง)", className="text-muted small"),
-                    html.H4(f"-{res['fatalities_saved']} Lives", className="text-success fw-bold"),
-                    html.Small(f"From {res['baseline_fatalities']} down to {res['simulated_fatalities']}", className="text-light")
-                ])
-            ], style={"backgroundColor": "#132338", "border": "1px solid #10B981", "borderRadius": "8px"})
-        ], md=4),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("Serious Injuries Prevented (ลดการบาดเจ็บสาหัส)", className="text-muted small"),
-                    html.H4(f"-{res['serious_prevented']} Cases", className="text-warning fw-bold"),
-                    html.Small(f"From {res['baseline_serious']} down to {res['simulated_serious']}", className="text-light")
-                ])
-            ], style={"backgroundColor": "#132338", "border": "1px solid #F59E0B", "borderRadius": "8px"})
-        ], md=4),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("Economic Savings (มูลค่าประหยัดได้ทางเศรษฐกิจ)", className="text-muted small"),
-                    html.H4(f"+฿{res['economic_savings_mb']:,.1f} M THB", className="text-info fw-bold"),
-                    html.Small("Based on DLT & WHO actuarial valuation", className="text-light")
-                ])
-            ], style={"backgroundColor": "#132338", "border": "1px solid #38BDF8", "borderRadius": "8px"})
-        ], md=4),
-    ], className="g-2")
-
-
-# Callback 4: Export CSV
+# Callback 3: CSV Download
 @app.callback(
     Output("download-dataframe-csv", "data"),
     Input("btn-export-csv", "n_clicks"),
@@ -353,10 +310,10 @@ def update_simulation_outcomes(speed_val, helmet_val, drunk_val, data_json):
     State("stored-raw-data", "data"),
     prevent_initial_call=True
 )
-def export_filtered_csv(n_clicks, year, region, vehicle, period, data_json):
+def export_csv(n_clicks, year, region, vehicle, period, data_json):
     if not n_clicks:
         return dash.no_update
-    df = pd.read_json(io.StringIO(data_json), orient="split")
+    df = pd.read_json(io.StringIO(data_json), orient="split") if data_json else raw_df
     filtered = filter_accident_data(
         df,
         years=[year] if year != "All" else None,
@@ -364,7 +321,67 @@ def export_filtered_csv(n_clicks, year, region, vehicle, period, data_json):
         vehicle_types=[vehicle] if vehicle != "All" else None,
         period_types=[period] if period != "All" else None
     )
-    return dcc.send_data_frame(filtered.to_csv, "thailand_road_accidents_filtered.csv", index=False)
+    return dcc.send_data_frame(filtered.to_csv, "thailand_road_accidents_filtered.csv", index=False, encoding="utf-8-sig")
+
+
+# Callback 4: Policy Simulation Live Calculation (Tab 3)
+@app.callback(
+    Output("simulation-results-container", "children"),
+    Input("sim-slider-speed", "value"),
+    Input("sim-slider-helmet", "value"),
+    Input("sim-slider-drunk", "value"),
+    State("filter-year", "value"),
+    State("filter-region", "value"),
+    State("filter-vehicle", "value"),
+    State("filter-period", "value"),
+    State("stored-raw-data", "data")
+)
+def update_simulation_projections(speed_red, helmet_boost, drunk_red, year, region, vehicle, period, data_json):
+    df = pd.read_json(io.StringIO(data_json), orient="split") if data_json else raw_df
+    filtered = filter_accident_data(
+        df,
+        years=[year] if year != "All" else None,
+        regions=[region] if region != "All" else None,
+        vehicle_types=[vehicle] if vehicle != "All" else None,
+        period_types=[period] if period != "All" else None
+    )
+
+    sim_res = run_policy_simulation(
+        filtered,
+        speed_reduction_pct=speed_red or 0,
+        helmet_boost_pct=helmet_boost or 0,
+        drunk_reduction_pct=drunk_red or 0
+    )
+
+    return dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H6("ประมาณการช่วยชีวิตได้ (Estimated Lives Saved)", className="text-muted small"),
+                    html.H4(f"-{sim_res['fatalities_saved']:,} Lives", className="text-success fw-bold"),
+                    html.Small(f"จากฐานจริง {sim_res['baseline_fatalities']:,} เหลือ {sim_res['simulated_fatalities']:,} ราย", className="text-muted")
+                ])
+            ], style={"backgroundColor": "#132338", "border": "1px solid #10B981"}, className="shadow-sm")
+        ], md=4, className="mb-2"),
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H6("ลดการบาดเจ็บสาหัส (Estimated Injuries Prevented)", className="text-muted small"),
+                    html.H4(f"-{sim_res['serious_prevented']:,} Cases", className="text-info fw-bold"),
+                    html.Small(f"จากฐานจริง {sim_res['baseline_serious']:,} เหลือ {sim_res['simulated_serious']:,} ราย", className="text-muted")
+                ])
+            ], style={"backgroundColor": "#132338", "border": "1px solid #38BDF8"}, className="shadow-sm")
+        ], md=4, className="mb-2"),
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H6("มูลค่าประหยัดได้ทางเศรษฐกิจ (Estimated Savings)", className="text-muted small"),
+                    html.H4(f"+฿{sim_res['economic_savings_mb']:,.1f} M THB", className="text-warning fw-bold"),
+                    html.Small("เกณฑ์ประเมิน DOH/TDRI", className="text-muted")
+                ])
+            ], style={"backgroundColor": "#132338", "border": "1px solid #F59E0B"}, className="shadow-sm")
+        ], md=4, className="mb-2"),
+    ])
 
 
 if __name__ == "__main__":
